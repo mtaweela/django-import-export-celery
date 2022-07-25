@@ -77,6 +77,11 @@ class ExportJob(models.Model):
         default=True,
     )
 
+    attach_file_in_mail = models.BooleanField(
+        verbose_name=_("Attach the file in the email this export job is complete"),
+        default=True,
+    )
+
     site_of_origin = models.TextField(
         max_length=255,
         default="",

@@ -1,4 +1,5 @@
 # Author: Timothy Hobbs <timothy <at> hobbs.cz>
+from django.core.mail import EmailMessage
 from django.utils import timezone
 import os
 
@@ -7,7 +8,7 @@ from celery import shared_task
 from django.conf import settings
 from django.core.files.base import ContentFile
 from django.core.cache import cache
-from django.core.mail import send_mail
+from io import BytesIO
 
 from django.urls import reverse
 from django.utils.encoding import force_str
@@ -234,24 +235,31 @@ def run_export_job(pk):
         serialized = serialized.encode("utf8")
     export_job.file.save(filename, ContentFile(serialized))
     if export_job.email_on_completion:
-        send_mail(
-            _("Django: Export job completed"),
-            _(
-                "Your export job on model {app_label}.{model} has completed. You can download the file at the following link:\n\n{link}"
-            ).format(
-                app_label=export_job.app_label,
-                model=export_job.model,
-                link=export_job.site_of_origin
-                + reverse(
-                    "admin:%s_%s_change"
-                    % (
-                        export_job._meta.app_label,
-                        export_job._meta.model_name,
-                    ),
-                    args=[export_job.pk],
-                ),
-            ),
-            settings.SERVER_EMAIL,
-            [export_job.updated_by.email],
-        )
+        send_export_job_completed_email(export_job, filename, serialized, format)
     return
+
+
+def send_export_job_completed_email(export_job, filename, file_content, format):
+    mail = EmailMessage(
+        _("Django: Export job completed"),
+        _(
+            "Your export job on model {app_label}.{model} has completed. You can download the file at the following link:\n\n{link}"
+        ).format(
+            app_label=export_job.app_label,
+            model=export_job.model,
+            link=export_job.site_of_origin
+            + reverse(
+                "admin:%s_%s_change"
+                % (
+                    export_job._meta.app_label,
+                    export_job._meta.model_name,
+                ),
+                args=[export_job.pk],
+            ),
+        ),
+        settings.SERVER_EMAIL,
+        [export_job.updated_by.email],
+    )
+    if export_job.attach_file_in_mail:
+        mail.attach(filename, BytesIO(file_content).read(), format.CONTENT_TYPE)
+    mail.send()
